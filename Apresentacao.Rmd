@@ -1,0 +1,172 @@
+---
+title: "Relatório para Saneamento da Base de Itens"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE,echo=FALSE,warning=FALSE,message=FALSE}
+rm(list = ls())
+library(dplyr)
+library(ggplot2)
+library(janitor)
+library(readxl)
+library(tidyr)
+library(lubridate)
+
+
+#Importa base de itens ativos
+itens <- read_excel(path = '2- base/Itens_Ativos_06_julho.xlsx',sheet = 'base') %>% clean_names() %>% 
+  mutate(data_de_inclusao = as_date(data_de_inclusao)) %>% 
+  rename(data_criacao_do_item = data_de_inclusao, criador_do_item = nome_usuario_inclusao) %>% 
+  select(-nome_empresa)
+
+#Importa gasto com ocs
+ocs <- read_excel('2- base/Ordens_De_Compra_Desde_2019.xlsx') %>% clean_names() %>% 
+  mutate(data_inclusao = as_date(data_inclusao),ano_oc = year(data_inclusao)) %>% 
+  group_by(ano_oc,nome_empresa,nome_filial,ordem_compra,codigo_item,modalidade) %>% 
+  summarise(total=1) %>% ungroup() %>% 
+  group_by(ano_oc,codigo_item,modalidade) %>% 
+  summarise(total=sum(total)) %>%
+  pivot_wider(names_from = modalidade,values_from = total,values_fn = sum,values_fill = 0) %>% 
+  clean_names() %>% arrange(desc(ano_oc),codigo_item)
+
+#Importa gasto com contratos
+contrato <- read_excel('2- base/Contratos_Desde_2019.xlsx') %>% clean_names() %>% 
+  mutate(ano_contrato = year(data_inclusao_contrato)) %>% 
+  group_by(ano_contrato,numero_contrato,tipo_contrato,codigo_item) %>% summarise(total = 1) %>% ungroup() %>%
+  group_by(ano_contrato,codigo_item,tipo_contrato) %>% summarise(total = sum(total)) %>% ungroup() %>% 
+  pivot_wider(names_from = tipo_contrato,values_from = total, values_fn = sum,values_fill = 0) %>%
+  clean_names() %>% arrange(desc(ano_contrato),codigo_item)
+  
+#Mostra base de itens ativos e seus gastos
+base <- itens %>% left_join(y = ocs,by=c('codigo_referencia'='codigo_item')) %>% 
+  left_join(y = contrato,by=c('codigo_referencia'='codigo_item')) %>% 
+  mutate(analise = if_else(!is.na(ano_oc),'com_gasto',
+                          if_else(is.na(ano_contrato), 'sem_gasto','com_gasto')))
+
+#Exporta relatório em excel
+writexl::write_xlsx(base,path = '4- relatorio/06_Julho_relatorio_itens_ativos_e_seus_gastos.xlsx')
+
+```
+
+## Objetivo
+Desenvolver relatório de itens cadastrados no sistema Benner, mostrando a utilização deles, para ajudar no saneamento da base de cadastro vigente no sistema Benner.
+
+## Metodologia
+*   O estudo considera: Itens que atualmente estão cadastrados no sistema Benner;
+
+*   Utilização destes itens em ordens de compra, de todas as modalidades, emitidas desde 2019 e que atualmente estão com status: "Confirmada", "Recebendo", "Encerrada";
+
+*   Utilização destes itens em contratos, de todas as modalidades, emitidos desde 2019 e que atualmente estão com situação: "Aprovado", "Cadastro Inicial", "Em Fase de Elaboração", "Encerrado", "Voltar para cadastro inicial", "Liberado para assinatura", "Confirmado".
+
+## Explicação das Colunas
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+teste <- base%>% filter(codigo_referencia==357230) %>% slice(1) %>% t()  %>% data.frame() %>% tibble::rownames_to_column() %>% rename('Nome das Colunas'=rowname,'Exemplo de Preenchimento'='.') %>% mutate('Explicação das Colunas' =c(
+  'Indica se o item esta ativo (S) ou se ele esta inativo (N)',
+  'Indica se o item esta classificado como: imobilizado / CAPEX / Investimento (S), ou não (N)',
+  'Código do item no Benner',
+  'Nome do Item no Benner',
+  'Código da estrutura da subfamilia',
+  'Nome da subfamilia',
+  'Data da criação do item',
+  'Nome da pessoa que criou o item',
+  'Ano da utilização deste item em ordem de compra',
+  'Quantidade de OCs da modalidade normal emitidas com este item no período "ano_oc"',
+  'Quantidade de OCs da modalidade regularização emitidas com este item no período "ano_oc"',
+  'Quantidade de OCs da modalidade catalogo emitidas com este item no período "ano_oc"',
+  'Ano da utilização deste item para compor um novo contrato',
+  'Quantidade de contratos da modalidade a_receber que foi criado com este item no período "ano_contrato"',
+  'Quantidade de contratos da modalidade a_pagar que foi criado com este item no período "ano_contrato"',
+  'Quantidade de contratos da modalidade convenios que foi criado com este item no período "ano_contrato"',
+  'Quantidade de contratos da modalidade nao_financeiro que foi criado com este item no período "ano_contrato"',
+  'Se este item teve utilização com ordem de compra e/ou com contrato irá aparecer "com_gasto"'
+))
+
+
+
+#Plota Tabela
+knitr::kable(teste) %>% kableExtra::kable_styling(font_size = 9)
+```
+
+## Resumo Geral
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+graf_3 <- base %>% group_by(ativo,item_imobilizado,codigo_referencia) %>% summarise(total=1) %>% ungroup() %>% 
+  group_by(ativo,item_imobilizado) %>% summarise(total=sum(total))
+
+ggplot(graf_3,aes(x = ativo,y = total,fill=item_imobilizado))+
+  geom_col(position = 'dodge')+
+  coord_flip()+
+  geom_text(aes(label=format(total,big.mark='.')),hjust=-.2,position = position_dodge(width = .5))+
+  theme_classic()+
+  theme(legend.position = 'top')+ylab('')+xlab('item_ativo')+
+  scale_fill_brewer()+
+  scale_y_continuous(limits = c(0,90000))+
+  labs(caption = paste0('Total de Itens: ',format(sum(graf_3$total),big.mark = '.')))
+
+```
+
+## Quantidade de itens sem utilização
+
+#### Por Ano de Criação
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+graf_2 <- base %>% filter(analise=='sem_gasto') %>% mutate(ano_criacao_item = year(data_criacao_do_item)) %>% 
+  group_by(ano_criacao_item,codigo_referencia) %>% summarise(total = 1) %>% ungroup() %>% 
+  group_by(ano_criacao_item) %>% summarise(total = sum(total)) %>% arrange(desc(total))
+
+ggplot(graf_2, aes(x = ano_criacao_item, y = total, label = format(x = total,big.mark='.',decimal.mark=',')))+
+  geom_point(stat='identity', color="purple", size=17) +
+  geom_segment(aes(x = ano_criacao_item, y = 0, xend=ano_criacao_item, yend=total), color='purple')+
+  geom_text(color="white", size=4)+
+  xlab('')+ylab('')+
+  theme_classic()+
+  theme(axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(size = 15))+
+  geom_ribbon(aes(xmin=2017,xmax=2020),fill='#888888',alpha=.20)+
+  annotate(geom = 'text',x = 2018.5 ,y = 10500, label=paste0('78,2%'), color='#888888',size=6,alpha=.4)+
+  geom_ribbon(aes(xmin=2020,xmax=2021),fill='#B9B9B9',alpha=.20)+
+  annotate(geom = 'text',x = 2020.5 ,y = 10500, label=paste0('19,3%'), color='#B9B9B9',size=6,alpha=.4)+
+  geom_ribbon(aes(xmin=2021,xmax=2022),fill='#E2E3E5',alpha=.20)+
+  annotate(geom = 'text',x = 2021.5 ,y = 10500, label=paste0('2,4%'), color='#E2E3E5',size=6,alpha=.8)+
+  annotate(geom = 'text',x = 2021 ,y = 25000, label=paste0('Total: ',format(x = sum(graf_2$total),big.mark='.',decimal.mark=',') ), color='purple',size=9)
+
+```
+
+## Top 10 subfamilias com mais itens sem utilização
+
+#### Por Ano de criação do item no Benner
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+graf <- base %>% filter(analise=='sem_gasto') %>% mutate(ano_criacao_item = year(data_criacao_do_item)) %>% 
+  group_by(ano_criacao_item,codigo_referencia,nome_familia) %>% summarise(total = 1) %>% ungroup() %>% 
+  group_by(ano_criacao_item,nome_familia) %>% summarise(total = sum(total)) %>% arrange(desc(total))
+
+graf_top_10 <- graf %>% pivot_wider(names_from = ano_criacao_item,values_from = total,values_fn = sum) %>% 
+  mutate(total = `2017`+`2018`+`2019`+`2020`+`2021`+`2022`) %>% arrange(desc(total)) %>% top_n(total,n = 10) %>% 
+  pull(nome_familia)
+
+ggplot(graf %>% filter(nome_familia %in% graf_top_10), aes(x = reorder(nome_familia,total),y = total))+
+  geom_col(fill='#B7C7F8')+
+  coord_flip()+
+  facet_grid(~ano_criacao_item,scales = 'free')+
+  #geom_text(aes(label=total),vjust=.3,size=3)+
+  xlab('')+ylab('')+
+  theme_test()+
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank(),axis.text.y = element_text(size = 6))
+
+```
+
+## Considerações Finais
+
+As informações deste relatório foram coletadas na semana do dia 07/07/2022 e podem sofrer variações, porque dependendo da data de análise podem haver novos itens e/ou aumento no volume de utilização.
