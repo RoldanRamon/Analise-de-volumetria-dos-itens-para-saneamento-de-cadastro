@@ -58,23 +58,19 @@ writexl::write_xlsx(base,path = '4- relatorio/06_Julho_relatorio_itens_ativos_e_
 ```
 
 ## Objetivo
-Desenvolver relatório de itens cadastrados no sistema Benner, mostrando a utilização deles, para ajudar no saneamento da base de cadastro vigente no sistema Benner.
+Desenvolver relatório de itens cadastrados no sistema, mostrando a utilização deles, para ajudar no saneamento da base de cadastro vigente no sistema.
 
-## Metodologia
-*   O estudo considera: Itens que atualmente estão cadastrados no sistema Benner;
+## Premissa
+*   O estudo considera: Itens que atualmente estão cadastrados no sistema e que tiveram utilização.
 
-*   Utilização destes itens em ordens de compra, de todas as modalidades, emitidas desde 2019 e que atualmente estão com status: "Confirmada", "Recebendo", "Encerrada";
-
-*   Utilização destes itens em contratos, de todas as modalidades, emitidos desde 2019 e que atualmente estão com situação: "Aprovado", "Cadastro Inicial", "Em Fase de Elaboração", "Encerrado", "Voltar para cadastro inicial", "Liberado para assinatura", "Confirmado".
-
-## Explicação das Colunas
+## Exemplo da Base de dados e Explicação das Colunas
 
 ```{r, echo=FALSE,warning=FALSE,message=FALSE}
 teste <- base%>% filter(codigo_referencia==357230) %>% slice(1) %>% t()  %>% data.frame() %>% tibble::rownames_to_column() %>% rename('Nome das Colunas'=rowname,'Exemplo de Preenchimento'='.') %>% mutate('Explicação das Colunas' =c(
   'Indica se o item esta ativo (S) ou se ele esta inativo (N)',
   'Indica se o item esta classificado como: imobilizado / CAPEX / Investimento (S), ou não (N)',
-  'Código do item no Benner',
-  'Nome do Item no Benner',
+  'Código do item no Sistema',
+  'Nome do Item no Sistema',
   'Código da estrutura da subfamilia',
   'Nome da subfamilia',
   'Data da criação do item',
@@ -143,9 +139,9 @@ ggplot(graf_2, aes(x = ano_criacao_item, y = total, label = format(x = total,big
 
 ```
 
-## Top 10 subfamilias com mais itens sem utilização
+## Top 10 Categorias com mais itens sem utilização
 
-#### Por Ano de criação do item no Benner
+#### Por Ano de criação do item
 
 ```{r, echo=FALSE,warning=FALSE,message=FALSE}
 graf <- base %>% filter(analise=='sem_gasto') %>% mutate(ano_criacao_item = year(data_criacao_do_item)) %>% 
@@ -167,6 +163,6 @@ ggplot(graf %>% filter(nome_familia %in% graf_top_10), aes(x = reorder(nome_fami
 
 ```
 
-## Considerações Finais
+## Observações
 
-As informações deste relatório foram coletadas na semana do dia 07/07/2022 e podem sofrer variações, porque dependendo da data de análise podem haver novos itens e/ou aumento no volume de utilização.
+As informações deste relatório são ficticias e servem exclusivamente para demonstrar conhecimento sobre desenvolvimento de relatórios.
